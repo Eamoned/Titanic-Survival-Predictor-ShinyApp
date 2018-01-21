@@ -1,0 +1,387 @@
+---
+title: "Titanic Shiny App"
+author: "Eamon Corr"
+date: "21 January 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+```
+
+```{r}
+df.train <- read.csv("Data/titanic/titanic_train.csv") # sequence of columns are different in train and test sets. We'll make them the same. 
+survived <- as.matrix(select(df.train, Survived))
+df.train <- select(df.train, -Survived)
+df.train$Survived <- survived 
+df.test <- read.csv("data/titanic/titanic_test.csv")
+test.real <- read.csv("data/titanic/kaggle data/gender_submission.csv")
+df.test$Survived <- test.real$Survived
+df.all <- bind_rows(df.train, df.test)
+```
+
+```{r}
+str(df.all)
+```
+
+####Feature Engineering
+The "Name" variable may not seem useful but you could do some feature engineering like pulling out rows with titles (Master, Sir, Madam, etc) which may indicate 1st class & so indicating they survived.  
+Note, name title is contained within the name variable and we can use surname to represent families.
+
+
+```{r}
+head(df.all$Name)
+```
+
+Grap title from names
+```{r}
+df.all$Title <- gsub('(.*, )|(\\..*)', '', df.all$Name) # How does this work??
+unique(df.all$Title)
+table(df.all$Title)
+table(df.all$Sex, df.all$Title)
+
+```
+
+Combine titles with low numbers:
+```{r}
+
+title_Rare <- c('Capt', 'Col', 'Don', 'Dona', 'Dr', 'Jonkheer', 'Lady', 'Major', 'Rev', 'Sir', 'the Countess')
+
+```
+
+Apply changes & Changes mis-spells:
+```{r}
+df.all$Title[df.all$Title == 'Mlle'] <- 'Miss'
+df.all$Title[df.all$Title == 'Ms'] <- 'Miss'
+df.all$Title[df.all$Title == 'Mme'] <- 'Mrs'
+
+df.all$Title[df.all$Title %in% title_Rare] <- 'title_Rare'
+
+```
+
+Check again:
+```{r}
+table(df.all$Sex, df.all$Title)
+```
+
+Pull the surname from Name
+```{r}
+df.all$Surname <- sapply(df.all$Name, function(x) strsplit(x, split = '[,.]')[[1]][1])
+
+```
+
+Create a function to pull surnames
+```{r}
+# or the long way
+#surNames <- function(x) {
+#  result <- strsplit(x, split = '[,.]')[[1]][1]
+ # or return(strsplit(x, split = '[,.]')[[1]][1])
+#}
+#df.all$Surname <- sapply(df.all$Name, surNames)
+```
+
+```{r}
+nlevels(factor(df.all$Surname))
+
+```
+
+Now we'll make a family size variable based on number of siblings/spouse(s), i.e. brother, sister,stepbrother-sister / husband, wife.  
+And the number of parch, i.e. the number of children each entry has.
+```{r}
+df.all$familySize <- df.all$SibSp + df.all$Parch + 1
+
+```
+
+looking at family size vs Survival
+```{r}
+ggplot(df.all, aes(familySize)) + geom_bar(aes(fill=factor(Survived)), position='dodge') + scale_x_continuous(breaks=seq(min(1), max(11), by=1)) + labs(x = "Family Size")
+
+# scale_x_continuous(breaks = c(1:11))
+
+```
+- less survivers in Family sizes of 1 and >4.
+
+We can summarise family sizes further and group the comparitively fewer larger families
+```{r}
+df.all$FSize.Category[df.all$familySize == 1] <- 'Single'
+df.all$FSize.Category[df.all$familySize > 1 & df.all$familySize < 5] <- 'Small'
+df.all$FSize.Category[df.all$familySize > 4] <- 'Large'
+
+```
+
+We use a funtion to do the above
+```{r}
+#famSizeCal <- function(x) {
+  #x <- as.character(x)
+ # if (x ==1) {
+  #  return("Single")
+  #} else if ( (x > 1) && (x < 5) ){
+    #return("Small")
+  #} 
+  #return("Large")
+  
+#}
+#df.all$FSize.Category <- sapply(df.all$familySize, famSizeCal)
+
+```
+
+
+Exercise: Different ways to check data with large familes only
+```{r}
+head(subset(df.all, subset=FSize.Category == 'Large'))
+head(filter(df.all, FSize.Category == 'Large'))
+
+```
+
+
+####Data Cleaning
+
+```{r}
+library(Amelia)
+missmap(df.all, main="Missings Map", col=c("yellow", "black"), legend=FALSE)
+pl <- ggplot(df.all, aes(x=Pclass, y=Age)) + geom_boxplot(aes(group=Pclass, fill=factor(Pclass),alpha=0.5))  
+pl + scale_y_continuous(breaks=seq(min(0), max(80), by=2)) + theme_bw()
+median(na.omit(df.all$Age[df.all$Pclass == 1]))
+median(na.omit(df.all$Age[df.all$Pclass == 2]))
+median(na.omit(df.all$Age[df.all$Pclass == 3]))
+
+```
+
+Apart from the large number of missing "Age" data there is one "Fare" NA.
+For the sake of handingness we'll replace the NA Fare value with the median for their class
+
+```{r}
+nas <- sapply(df.all$Fare, is.na)
+df.all[nas,]
+
+```
+
+```{r}
+median(df.all$Fare[df.all$Pclass==3], na.rm=TRUE)
+df.all[1044, 9] <- median(df.all$Fare[df.all$Pclass==3], na.rm=TRUE)
+# OR    df.test$Fare[153] <-
+```
+
+
+Create a function for imputation (to replace missing Age values):
+```{r}
+impute_age <- function(age,class){  #Pass in the Age column & the class column
+  out <- age
+  for (i in 1:length(age)){        #for every element in age column (i in 1)
+    
+    if (is.na(age[i])){            #check if that age is an "na" value.  If's not NA value then we go to else statement at the bottom
+      
+      if (class[i] == 1){          #then check the class of that specific passenger (which why we're using i here). 
+                                   #If class equals 1 then 'out" of 1 equals 37
+        out[i] <- 39
+        
+      }else if (class[i] == 2){   #and s on
+        out[i] <- 29
+        
+      }else{
+        out[i] <- 24
+      }
+    }else{
+      out[i]<-age[i]  #out of i is equal to Age of i. This just replaces age in out with the same age it replaces. Bit redundant really
+    }
+  }
+  return(out)              #eventually return out and that will be my fixed age
+}
+
+fixed.ages <- impute_age(df.all$Age, df.all$Pclass)
+df.all$Age <- fixed.ages
+```
+
+Just to check
+```{r}
+
+sum(is.na(df.all) == TRUE) # 0 NAs. 
+missmap(df.all, main="Impuation Check", col=c("yellow", "black"), legend=FALSE)
+
+```
+
+####Building the model
+
+```{r}
+x <- df.all  #backup
+```
+
+Change to factors
+```{r}
+df.all$Survived <- as.factor(df.all$Survived)  #you can use as.factor() or just factor()
+df.all$Pclass <- factor(df.all$Pclass)
+df.all$SibSp <- factor(df.all$SibSp)
+#df.all$Parch <- factor(df.all$Parch)
+df.all$Embarked <- factor(df.all$Embarked)
+#df.all$familySize <- factor(df.all$familySize)
+#df.all$FSize.Category <- factor(df.all$FSize.Category)
+
+```
+
+
+```{r}
+str(df.all)
+```
+
+#### Model 1:
+
+Remove variables we will not use
+- We will not use: PasengerId; Name; Ticket; Cabin(too many missing values). 
+- We'll also remove "familySize" because it measures NA when the model is run 
+```{r}
+df.model1 <- select(df.all, -c(PassengerId, Name, Ticket, Cabin, Surname, Title, familySize))
+```
+
+
+Training & Test Sets
+```{r}
+train <- df.model1[1:891,]
+test <- df.model1[892:1309,]
+```
+
+Train the Model:
+```{r}
+model1 <- glm(formula=Survived ~. , family = binomial(link = "logit"), data = train)  #generalised linear model; all columns/features;
+summary(model1)
+```
+
+####Prediction Accuracy
+
+
+```{r}
+fitted.probs <- predict(model1, newdata=test, type = "response")
+
+fitted.pred <- ifelse(fitted.probs > 0.5, 1, 0)
+any(is.na(fitted.pred))
+```
+
+
+Accuracy using test data - this does not work
+```{r}
+
+misClassError <- mean(fitted.pred != test$Survived)
+print(paste("Accuracy = ", 1 - misClassError))
+sum(is.na(fitted.pred))
+```
+
+Let's see the confusion matrix. - the main standard of evaluating your model because you can get specificity, recall, or precision or accuracy.  
+Dont just use accuracy as a score of your model, use all the other rates used in the logistic regression sessions.
+
+Confusion Matrix (we use table fuction to create):
+```{r}
+table(test$Survived, fitted.pred)
+table(test.real$Survived, fitted.probs > 0.5)
+
+```
+
+The diagonal elements of the confusion matrix indicate correct predictions, while the off-diagonals represent incorrect predictions  
+       0     1  
+ 0     TN    FP  
+ 1     FN    TP  
+
+
+Another way:
+```{r}
+
+(249 + 145) / sum(249+145+7+17)   # (TN + TP) / Total
+# 0.942446
+mean(fitted.pred==test$Survived)
+
+```
+
+####Model 2
+
+Remove variables we will not use
+- We will not use: PasengerId; Name; Ticket; Cabin(too many missing values). 
+- We'll also remove "familySize" because it measures NA when this model is run 
+```{r}
+df.model2 <- select(df.all, -c(PassengerId, Name, Ticket, Cabin, Surname, Title, familySize, SibSp, Fare))
+```
+
+
+Training & Test Sets
+```{r}
+train <- df.model2[1:891,]
+test <- df.model2[892:1309,]
+```
+
+Train the Model:
+```{r}
+model2 <- glm(formula=Survived ~. , family = binomial(link = "logit"), data = train)  #generalised linear model; all columns/features;
+summary(model2)
+```
+
+####Prediction Accuracy
+
+
+```{r}
+fitted.probs <- predict(model2, newdata=test, type = "response")
+
+fitted.pred <- ifelse(fitted.probs > 0.5, 1, 0)
+any(is.na(fitted.pred))
+```
+
+
+Accuracy using test data - this does not work
+```{r}
+
+misClassError <- mean(fitted.pred != test$Survived)
+print(paste("Accuracy = ", 1 - misClassError))
+sum(is.na(fitted.pred))
+```
+
+Let's see the confusion matrix. - the main standard of evaluating your model because you can get specificity, recall, or precision or accuracy.  
+Dont just use accuracy as a score of your model, use all the other rates used in the logistic regression sessions.
+
+Confusion Matrix (we use table fuction to create):
+```{r}
+table(test$Survived, fitted.pred)
+table(test.real$Survived, fitted.probs > 0.5)
+
+```
+
+The diagonal elements of the confusion matrix indicate correct predictions, while the off-diagonals represent incorrect predictions  
+       0     1  
+ 0     TN    FP  
+ 1     FN    TP  
+
+
+Another way:
+```{r}
+
+(250 + 144) / sum(250+144+8+16)   # (TN + TP) / Total
+# 0.942446
+mean(fitted.pred==test$Survived)
+
+```
+
+
+```{r}
+ticketclass <- 1
+sex <- 'male'
+parentChild <- 2
+embarked <- 'C'
+sizeFamily <- 'Large'
+age <- 35
+
+
+
+dat <- data.frame('Pclass' = factor(ticketclass) , 'Sex' =factor(sex) , 'Age'=age, 'Parch'=parentChild, 'Embarked'=factor(embarked), 'FSize.Category'=sizeFamily)
+
+
+fitted.probs <- predict(model2, newdata=dat, type = "response")
+
+fitted.pred <- ifelse(fitted.probs > 0.5, "You Survived", "Sorry, you didn't make it")
+fitted.pred
+
+#write.csv(train, file = "titanicShiny_train.csv" , row.names=FALSE)
+#write.csv(test, file = "titanicShiny_test.csv" , row.names=FALSE)
+
+```
+
