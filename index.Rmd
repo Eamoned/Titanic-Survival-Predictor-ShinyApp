@@ -1,0 +1,72 @@
+---
+title: "Titanic Survival Predictor"
+subtitle: "Developing Data Products Project"
+author: "Eamon Corr"
+date: "21 January 2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Would you Survive the sinking of the Titanic?
+Simply enter a few details and the Shiny App will predict your probability of survival with a 94% Accuracy.  
+
+Experiment with different scenarios and see if your chances improve or deteriorate.
+
+Click here for the Shiny App:
+https://corralytics.shinyapps.io/titanic/
+
+Follow the instructions below and Good Luck
+
+## Instructions:
+Open the Shiny App and enter the following details:
+
+- **Sex:** *Male or Female*  
+- **Ticket Class:** *1st, 2nd, 3rd*  
+- **Embarkation:** *Cherbourg(France), Queenstown(Now Cobh, Ireland), S'hampton(England)*  
+- **Age:** *For a child less than 1 enter 0.4*  
+- **Parent/Child:** *Number of your parents and children that accompanied you on your journey*  
+- **Family Size:** *Total number of family that accompanied you on the journey - include yourself in the total*
+
+#### Additional guidelines are contained in the Shiny App input panel 
+
+## The Titanic Training Dataset
+The dataset used to build the prediction model looks like this:
+```{r, comment = ""}
+train <- read.csv("dataset/titanicShiny_train.csv")
+test <- read.csv("dataset/titanicShiny_test.csv")
+head(train,2)
+```
+
+
+Here's the calculated accuracy of the Model using a test dataset:
+```{r, echo = TRUE}
+model <- glm(formula=Survived ~. , family = binomial(link = "logit"), 
+             data = train)
+fitted.probs <- predict(model, newdata=test, type = "response")
+fitted.pred <- ifelse(fitted.probs > 0.5, 1, 0)
+accuracy <- mean(fitted.pred==test$Survived)
+
+```
+
+```{r}
+accuracy
+```
+
+
+##Shiny App Documentation & Reproducibility
+
+The Titanic Survival Predictor Shiny App is located here:
+https://corralytics.shinyapps.io/titanic/
+
+The full source code for this Shiny App can be found on my GitHub page: 
+https://github.com/Eamoned/Titanic-Survival-Predictor-ShinyApp
+
+All code for the initial titanic data exploration, data cleaning, feature engineering
+& model building can be found here:  
+https://github.com/Eamoned/Titanic-Survival-Predictor-ShinyApp/blob/master/titanicModelBuilding.rmd
+
+Enjoy
+
