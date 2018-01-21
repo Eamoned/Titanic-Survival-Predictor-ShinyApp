@@ -18,7 +18,7 @@ Experiment with different scenarios and see if your chances improve or deteriora
 Click here for the Shiny App:
 https://corralytics.shinyapps.io/titanic/
 
-Click here for the Shiny App Source Code:
+Follow the instructions below and Good Luck
 
 ## Instructions:
 Open the Shiny App and enter the following details:
@@ -41,7 +41,7 @@ head(train,2)
 ```
 
 
-Calculated accuracy of the Model using a test dataset:
+Here's the calculated accuracy of the Model using a test dataset:
 ```{r, echo = TRUE}
 model <- glm(formula=Survived ~. , family = binomial(link = "logit"), 
              data = train)
@@ -58,11 +58,15 @@ accuracy
 
 ##Shiny App Documentation & Reproducibility
 
-The Titanic Survival Predictor Shiny App can be found here
+The Titanic Survival Predictor Shiny App is located here:
+https://corralytics.shinyapps.io/titanic/
 
-Full source code for this Shiny App can be found here 
-or here at
+The full source code for this Shiny App can be found on my GitHub page: 
+https://github.com/Eamoned/Titanic-Survival-Predictor-ShinyApp
 
 All code for the initial titanic data exploration, data cleaning, feature engineering
-and model building can be found here
+& model building can be found here:  
+https://github.com/Eamoned/Titanic-Survival-Predictor-ShinyApp/blob/master/titanicModelBuilding.rmd
+
+Enjoy
 
